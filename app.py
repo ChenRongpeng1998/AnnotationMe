@@ -29,6 +29,7 @@ AUTO_BATCH_STATE = {
     "success_count": 0,
     "failed_count": 0,
     "current_image": "",
+    "completed_relative_paths": [],
     "logs": [],
 }
 
@@ -48,6 +49,7 @@ def reset_batch_state(total: int):
         AUTO_BATCH_STATE["success_count"] = 0
         AUTO_BATCH_STATE["failed_count"] = 0
         AUTO_BATCH_STATE["current_image"] = ""
+        AUTO_BATCH_STATE["completed_relative_paths"] = []
         AUTO_BATCH_STATE["logs"] = []
 
 
@@ -66,6 +68,7 @@ def snapshot_batch_state():
             "success_count": AUTO_BATCH_STATE["success_count"],
             "failed_count": AUTO_BATCH_STATE["failed_count"],
             "current_image": AUTO_BATCH_STATE["current_image"],
+            "completed_relative_paths": list(AUTO_BATCH_STATE["completed_relative_paths"]),
             "logs": list(AUTO_BATCH_STATE["logs"]),
         }
 
@@ -92,6 +95,23 @@ def find_current_image(images, relative_path: str):
         if item["relative_path"] == relative_path:
             return item
     return None
+
+
+def get_image_state_by_relative_path(config: dict, relative_path: str):
+    normalized_relative_path = str(relative_path).strip()
+    if not normalized_relative_path:
+        raise ValueError("缺少 relative_path")
+
+    images, project_state = build_project_state_from_disk(config)
+    current_image = find_current_image(images, normalized_relative_path)
+    if current_image is None:
+        raise FileNotFoundError(f"未找到图像元数据 {normalized_relative_path}")
+
+    image_states = project_state["images"]
+    if normalized_relative_path not in image_states:
+        raise FileNotFoundError(f"未找到图像状态 {normalized_relative_path}")
+
+    return image_states[normalized_relative_path]
 
 
 def run_auto_annotate_for_relative_path(config: dict, relative_path: str):
@@ -291,6 +311,7 @@ def batch_auto_annotate_worker():
 
             with AUTO_BATCH_LOCK:
                 AUTO_BATCH_STATE["processed"] += 1
+                AUTO_BATCH_STATE["completed_relative_paths"].append(relative_path)
                 if result.get("success"):
                     AUTO_BATCH_STATE["success_count"] += 1
                 else:
@@ -502,6 +523,39 @@ def auto_annotate_batch_status():
     return jsonify({
         "success": True,
         "batch_state": snapshot_batch_state()
+    })
+
+
+@app.route("/api/image-state", methods=["GET"])
+def get_image_state():
+    config = load_config()
+    relative_path = str(request.args.get("relative_path", "")).strip()
+
+    if not relative_path:
+        return jsonify({
+            "success": False,
+            "message": "缺少 relative_path",
+            "image_state": None
+        }), 400
+
+    try:
+        image_state = get_image_state_by_relative_path(config, relative_path)
+    except FileNotFoundError as exc:
+        return jsonify({
+            "success": False,
+            "message": str(exc),
+            "image_state": None
+        }), 404
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "message": f"获取图像状态失败: {str(exc)}",
+            "image_state": None
+        }), 400
+
+    return jsonify({
+        "success": True,
+        "image_state": image_state
     })
 
 
