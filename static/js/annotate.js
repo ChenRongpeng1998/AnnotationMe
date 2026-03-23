@@ -38,7 +38,8 @@
         batch: {
             running: false,
             timerId: null,
-            lastProcessed: -1
+            lastProcessed: -1,
+            pendingImageStates: {}
         },
 
         suppressNextStageClick: false,
@@ -344,22 +345,85 @@
         return [left, top, right, bottom];
     }
 
-    async function fetchAndMergeImageState(relativePath, forceSelectAllTemp = false) {
+    function cloneImageState(imageState) {
+        if (!imageState || typeof imageState !== "object") {
+            return null;
+        }
+        return JSON.parse(JSON.stringify(imageState));
+    }
+
+    function mergePendingTemporaryAnnotationsIntoImageState(relativePath, forceSelectAllTemp = false) {
         if (!relativePath) {
-            return;
+            return false;
+        }
+
+        const pendingState = state.batch.pendingImageStates[relativePath];
+        const imageState = state.imageStates[relativePath];
+        if (!pendingState || !imageState) {
+            return false;
+        }
+
+        imageState.temporary_annotations = Array.isArray(pendingState.temporary_annotations)
+            ? pendingState.temporary_annotations
+            : [];
+        delete state.batch.pendingImageStates[relativePath];
+
+        if (getCurrentRelativePath() === relativePath) {
+            syncSelectedTemporaryIdsWithCurrentState(forceSelectAllTemp);
+        }
+
+        return true;
+    }
+
+    async function loadImageState(relativePath, forceSelectAllTemp = false) {
+        if (!relativePath) {
+            return null;
         }
         try {
             const result = await safeFetchJson(`/api/image-state?relative_path=${encodeURIComponent(relativePath)}`, {}, "获取图片状态失败");
             if (!result.success) {
-                return;
+                return null;
             }
+
             state.imageStates[relativePath] = result.image_state;
+            mergePendingTemporaryAnnotationsIntoImageState(relativePath, forceSelectAllTemp);
+
             if (getCurrentRelativePath() === relativePath) {
                 syncSelectedTemporaryIdsWithCurrentState(forceSelectAllTemp);
-                renderAllAnnotationUi();
             }
+
+            return state.imageStates[relativePath];
         } catch (error) {
             addLog(`同步图片状态失败：${error.message}`);
+            return null;
+        }
+    }
+
+    async function fetchAndMergeImageState(relativePath) {
+        if (!relativePath) {
+            return null;
+        }
+        try {
+            const result = await safeFetchJson(`/api/image-state?relative_path=${encodeURIComponent(relativePath)}`, {}, "获取图片状态失败");
+            if (!result.success) {
+                return null;
+            }
+
+            const imageState = cloneImageState(result.image_state);
+            if (!imageState) {
+                return null;
+            }
+
+            state.batch.pendingImageStates[relativePath] = {
+                temporary_annotations: Array.isArray(imageState.temporary_annotations)
+                    ? imageState.temporary_annotations
+                    : []
+            };
+
+            return state.batch.pendingImageStates[relativePath];
+        } catch (error) {
+            addLog(`接收批量标注结果失败：${error.message}`);
+            return null;
         }
     }
 
@@ -483,12 +547,17 @@
         renderBatchImageList();
     }
 
-    async function syncCurrentImageStateFromServer() {
+    async function syncCurrentImageStateFromServer(forceSelectAllTemp = false) {
         const relativePath = getCurrentRelativePath();
         if (!relativePath) {
-            return;
+            return null;
         }
-        await fetchAndMergeImageState(relativePath, false);
+
+        const imageState = await loadImageState(relativePath, forceSelectAllTemp);
+        if (imageState && !state.interaction.active) {
+            renderAllAnnotationUi();
+        }
+        return imageState;
     }
 
     async function pollBatchStatus() {
@@ -504,7 +573,22 @@
             const processed = Number(batchState.processed || 0);
             if (processed !== state.batch.lastProcessed) {
                 state.batch.lastProcessed = processed;
-                await syncCurrentImageStateFromServer();
+
+                const currentRelativePath = getCurrentRelativePath();
+                const pendingRelativePaths = new Set([
+                    currentRelativePath,
+                    batchState.current_image
+                ].filter(Boolean));
+
+                for (const relativePath of pendingRelativePaths) {
+                    await fetchAndMergeImageState(relativePath);
+                }
+
+                if (!state.interaction.active
+                    && currentRelativePath
+                    && mergePendingTemporaryAnnotationsIntoImageState(currentRelativePath, false)) {
+                    renderAllAnnotationUi();
+                }
             }
 
             if (batchState.running) {
@@ -518,7 +602,7 @@
                     window.clearInterval(state.batch.timerId);
                     state.batch.timerId = null;
                 }
-                await syncCurrentImageStateFromServer();
+                await syncCurrentImageStateFromServer(false);
             }
         } catch (error) {
             addLog(`批量状态轮询失败：${error.message}`);
@@ -1337,6 +1421,7 @@
                 state.nextAnnoId = result.next_anno_id;
             }
 
+            await syncCurrentImageStateFromServer(false);
             addLog(result.message || "保存成功");
             showToast(result.message || "保存成功", "success");
             return true;
@@ -1401,6 +1486,7 @@
             }
 
             state.imageStates[current.relative_path] = result.image_state;
+            delete state.batch.pendingImageStates[current.relative_path];
             selectAllCurrentTemporaryIds();
             renderAllAnnotationUi();
             showToast("自动标注完成，已默认全选全部临时框", "success");
@@ -1465,6 +1551,7 @@
             }
 
             state.imageStates[current.relative_path] = result.image_state;
+            delete state.batch.pendingImageStates[current.relative_path];
 
             if (typeof result.next_anno_id === "number") {
                 state.nextAnnoId = result.next_anno_id;
@@ -1522,7 +1609,7 @@
         updateImageStatus();
         resetImageSessionState();
 
-        await fetchAndMergeImageState(current.relative_path, true);
+        await loadImageState(current.relative_path, true);
 
         imageEmptyPlaceholder.style.display = "none";
         canvasContent.style.display = "block";
@@ -1536,8 +1623,9 @@
     async function showImageByIndex(index) {
         if (index < 0 || index >= state.images.length) return;
         state.currentIndex = index;
-        await updateImageDisplay();
+
         const current = state.images[state.currentIndex];
+        await updateImageDisplay();
         addLog(`切换图像: ${current.relative_path}`);
     }
 
@@ -1833,6 +1921,7 @@
         state.config = result.config || {};
         state.images = Array.isArray(result.images) ? result.images : [];
         state.imageStates = result.image_states && typeof result.image_states === "object" ? result.image_states : {};
+        state.batch.pendingImageStates = {};
         state.currentIndex = typeof result.current_index === "number" ? result.current_index : -1;
         state.nextAnnoId = typeof result.next_anno_id === "number"
             ? result.next_anno_id
