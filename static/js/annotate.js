@@ -38,7 +38,8 @@
         batch: {
             running: false,
             timerId: null,
-            lastProcessed: -1
+            lastProcessed: -1,
+            seenCompletedPaths: new Set()
         },
 
         suppressNextStageClick: false,
@@ -483,12 +484,23 @@
         renderBatchImageList();
     }
 
-    async function syncCurrentImageStateFromServer() {
-        const relativePath = getCurrentRelativePath();
-        if (!relativePath) {
-            return;
-        }
-        await fetchAndMergeImageState(relativePath, false);
+    function isCurrentImageBeingEdited() {
+        return !!(state.creating || state.interaction.active || state.view.isPanning);
+    }
+
+    function getNewlyCompletedPaths(batchState) {
+        const completedPaths = Array.isArray(batchState?.completed_relative_paths)
+            ? batchState.completed_relative_paths
+            : [];
+
+        const newPaths = [];
+        completedPaths.forEach((relativePath) => {
+            if (!state.batch.seenCompletedPaths.has(relativePath)) {
+                state.batch.seenCompletedPaths.add(relativePath);
+                newPaths.push(relativePath);
+            }
+        });
+        return newPaths;
     }
 
     async function pollBatchStatus() {
@@ -502,9 +514,15 @@
             updateBatchStatusUi(batchState);
 
             const processed = Number(batchState.processed || 0);
+            const newlyCompletedPaths = getNewlyCompletedPaths(batchState);
             if (processed !== state.batch.lastProcessed) {
                 state.batch.lastProcessed = processed;
-                await syncCurrentImageStateFromServer();
+            }
+
+            const currentRelativePath = getCurrentRelativePath();
+            const currentImageJustCompleted = !!currentRelativePath && newlyCompletedPaths.includes(currentRelativePath);
+            if (currentImageJustCompleted && !isCurrentImageBeingEdited()) {
+                await fetchAndMergeImageState(currentRelativePath, false);
             }
 
             if (batchState.running) {
@@ -518,7 +536,6 @@
                     window.clearInterval(state.batch.timerId);
                     state.batch.timerId = null;
                 }
-                await syncCurrentImageStateFromServer();
             }
         } catch (error) {
             addLog(`批量状态轮询失败：${error.message}`);
@@ -554,6 +571,7 @@
 
             state.batch.running = true;
             state.batch.lastProcessed = -1;
+            state.batch.seenCompletedPaths = new Set();
 
             if (state.batch.timerId) {
                 window.clearInterval(state.batch.timerId);
