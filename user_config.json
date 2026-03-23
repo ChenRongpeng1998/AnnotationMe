@@ -1,0 +1,48 @@
+{
+  "image_dir": "D:\\Project\\coco_merge\\merged\\images",
+  "output_dir": "D:\\Project\\AnnotationMe\\output",
+  "categories": [
+    {
+      "id": 1,
+      "name": "pointer_instrument"
+    },
+    {
+      "id": 2,
+      "name": "wrench_valve"
+    },
+    {
+      "id": 3,
+      "name": "knob"
+    },
+    {
+      "id": 4,
+      "name": "button"
+    },
+    {
+      "id": 5,
+      "name": "tag"
+    },
+    {
+      "id": 6,
+      "name": "digital_instrument"
+    },
+    {
+      "id": 7,
+      "name": "disc_valve"
+    }
+  ],
+  "image_id_start": 1,
+  "annotation_id_start": 1,
+  "bbox_line_width": 2,
+  "toolbar_tools": [
+    "select",
+    "bbox",
+    "delete",
+    "zoom_in",
+    "zoom_out",
+    "fit"
+  ],
+  "auto_annotate_api_url": "http://127.0.0.1:5101/api/infer",
+  "auto_annotate_token": "rAZMaDEe9AkwB1Jmhow3WVyOL-UIqgcE",
+  "auto_annotate_request_type": "path"
+}

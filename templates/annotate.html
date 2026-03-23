@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像标注系统 - 标注页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="page-annotate bootstrap-page-bg">
+    <div class="container-fluid py-2 annotate-container">
+        <div class="card border-0 shadow-sm mb-2 topbar-card">
+            <div class="card-body py-3 px-3 px-md-4 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <h1 class="h4 mb-0">图像标注系统</h1>
+                    <span class="badge text-bg-light">基础手工标注版</span>
+                    <span class="badge text-bg-primary" id="mode-badge">模式：选择</span>
+                    <span class="badge text-bg-secondary" id="selected-summary-badge">未选中标注框</span>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-outline-secondary btn-sm" id="open-shortcut-help-btn" type="button">快捷键帮助</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="save-project-btn" type="button">保存项目状态</button>
+                    <button class="btn btn-outline-success btn-sm" id="export-coco-btn" type="button">导出 COCO JSON</button>
+                    <button class="btn btn-outline-danger btn-sm" id="run-auto-annotate-btn" type="button">自动标注</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="window.location.href='/'">返回设置页</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mb-2 status-card">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex flex-wrap gap-3 small text-secondary align-items-center">
+                    <span id="status-current-tool">当前工具：选择</span>
+                    <span id="status-current-image">当前图片：0 / 0</span>
+                    <span id="status-current-zoom">当前缩放：100%</span>
+                    <span id="status-current-selected">当前选中：无</span>
+                    <span id="status-current-hint">提示：按 R 进入矩形框模式，按 H 进入手型拖动模式</span>
+                </div>
+                <div class="d-flex flex-wrap gap-3 small text-secondary align-items-center mt-2">
+                    <span id="batch-auto-status-text">批量标注：空闲</span>
+                    <span id="batch-auto-progress-text">进度：0 / 0</span>
+                    <span id="batch-auto-current-text">当前：无</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-2 annotate-main-row">
+            <div class="col-12 col-lg-2">
+                <div class="card border-0 shadow-sm h-100 panel-card">
+                    <div class="card-header bg-white fw-semibold">常用工具栏</div>
+                    <div class="card-body">
+                        <div id="left-toolbar-buttons" class="d-grid gap-2 toolbar-button-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-7">
+                <div class="card border-0 shadow-sm h-100 panel-card">
+                    <div class="card-body d-flex flex-column gap-2 center-panel-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 workspace-header">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button id="prev-image-btn" class="btn btn-outline-primary btn-sm" type="button">上一张</button>
+                                <button id="next-image-btn" class="btn btn-outline-primary btn-sm" type="button">下一张</button>
+                                <button id="rect-mode-btn" class="btn btn-success btn-sm" type="button">矩形框模式 (R)</button>
+                                <button id="pan-mode-btn" class="btn btn-outline-secondary btn-sm" type="button">手型拖动 (H)</button>
+                                <button id="fit-image-btn" class="btn btn-outline-secondary btn-sm" type="button">适配</button>
+                                <button id="zoom-in-btn" class="btn btn-outline-secondary btn-sm" type="button">放大</button>
+                                <button id="zoom-out-btn" class="btn btn-outline-secondary btn-sm" type="button">缩小</button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-3 text-secondary small">
+                                <span id="image-index-text">0 / 0</span>
+                                <span id="image-name-text">当前无图像</span>
+                                <span id="zoom-text">缩放：100%</span>
+                            </div>
+                        </div>
+
+                        <div class="image-stage cursor-select" id="image-stage">
+                            <div id="canvas-viewport" class="canvas-viewport">
+                                <div id="canvas-content" class="canvas-content">
+                                    <img id="main-image" class="main-image" alt="当前图像">
+                                    <div id="annotation-layer" class="annotation-layer"></div>
+                                    <div id="temporary-layer" class="temporary-layer"></div>
+                                    <div id="preview-layer" class="preview-layer"></div>
+                                </div>
+                            </div>
+
+                            <div id="stage-hint-overlay" class="stage-hint-overlay">
+                                <div id="stage-hint-text" class="stage-hint-text">请先加载图像</div>
+                            </div>
+
+                            <div id="image-empty-placeholder" class="image-empty-placeholder">
+                                当前没有可显示的图像，请先返回设置页配置图像目录。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-3">
+                <div class="card border-0 shadow-sm h-100 panel-card right-panel-card">
+                    <div class="card-header bg-white fw-semibold">信息栏</div>
+                    <div class="card-body d-flex flex-column min-h-0">
+                        <ul class="nav nav-tabs flex-wrap" id="infoTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active tab-button" data-tab="annotation-info" type="button">标注信息</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link tab-button" data-tab="categories-info" type="button">categories</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link tab-button" data-tab="auto-annotate-info" type="button">自动标注</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link tab-button" data-tab="batch-annotate-info" type="button">批量标注</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link tab-button" data-tab="log-info" type="button">日志</button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content-wrapper mt-3">
+                            <div class="tab-content active" id="annotation-info">
+                                <div class="d-flex flex-column gap-3">
+                                    <div class="editor-card">
+                                        <label for="create-category-select" class="form-label mb-2">新框 category</label>
+                                        <select id="create-category-select" class="form-select form-select-sm"></select>
+                                    </div>
+
+                                    <div class="editor-card">
+                                        <div class="fw-semibold mb-2">当前选中框</div>
+
+                                        <div id="selected-empty-tip" class="text-secondary small">
+                                            当前未选中任何框
+                                        </div>
+
+                                        <div id="selected-annotation-editor" class="d-none">
+                                            <div class="row g-2 mb-2">
+                                                <div class="col-6">
+                                                    <label class="form-label form-label-sm">anno_id</label>
+                                                    <input id="edit-anno-id" class="form-control form-control-sm" type="number" readonly>
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label form-label-sm">category</label>
+                                                    <select id="edit-category-select" class="form-select form-select-sm"></select>
+                                                </div>
+                                            </div>
+
+                                            <div class="row g-2 mb-2">
+                                                <div class="col-6">
+                                                    <label class="form-label form-label-sm">x1</label>
+                                                    <input id="edit-bbox-x1" class="form-control form-control-sm" type="number" step="1">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label form-label-sm">y1</label>
+                                                    <input id="edit-bbox-y1" class="form-control form-control-sm" type="number" step="1">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label form-label-sm">x2</label>
+                                                    <input id="edit-bbox-x2" class="form-control form-control-sm" type="number" step="1">
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label form-label-sm">y2</label>
+                                                    <input id="edit-bbox-y2" class="form-control form-control-sm" type="number" step="1">
+                                                </div>
+                                            </div>
+
+                                            <div class="small text-secondary mb-2">
+                                                bbox 内部按 xyxy 编辑，修改后实时刷新画布。
+                                            </div>
+
+                                            <div class="d-flex gap-2 flex-wrap">
+                                                <button id="delete-selected-btn" class="btn btn-outline-danger btn-sm" type="button">删除该框</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="editor-card flex-grow-1 min-h-0">
+                                        <div class="fw-semibold mb-2">当前图像正式标注列表</div>
+                                        <div id="annotation-list" class="sidebar-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-content" id="categories-info">
+                                <div class="sidebar-list" id="categories-list"></div>
+                            </div>
+
+                            <div class="tab-content" id="auto-annotate-info">
+                                <div class="d-flex flex-column gap-3">
+                                    <div class="editor-card">
+                                        <div class="fw-semibold mb-2">自动标注请求配置</div>
+                                        <div id="auto-api-summary" class="small text-secondary"></div>
+                                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                                            <button id="auto-tab-run-btn" class="btn btn-danger btn-sm" type="button">自动标注当前图像</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="editor-card">
+                                        <div class="fw-semibold mb-2">临时框操作</div>
+                                        <div class="small text-secondary mb-2">
+                                            默认全部勾选。只有勾选的临时框会显示在画布上，并在点击“保留选中框”后转为绿色正式框。
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <button id="convert-selected-temporary-btn" class="btn btn-success btn-sm" type="button">保留选中框</button>
+                                            <button id="clear-temporary-btn" class="btn btn-outline-secondary btn-sm" type="button">清空临时标注</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="editor-card flex-grow-1 min-h-0">
+                                        <div class="fw-semibold mb-2">当前图像临时自动标注</div>
+                                        <div id="temporary-annotation-list" class="sidebar-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-content" id="batch-annotate-info">
+                                <div class="d-flex flex-column gap-3">
+                                    <div class="editor-card">
+                                        <div class="fw-semibold mb-2">批量标注控制</div>
+                                        <div class="d-flex flex-wrap gap-2 mb-2">
+                                            <button id="batch-select-all-btn" class="btn btn-outline-secondary btn-sm" type="button">全选</button>
+                                            <button id="batch-unselect-all-btn" class="btn btn-outline-secondary btn-sm" type="button">全不选</button>
+                                            <button id="batch-start-btn" class="btn btn-danger btn-sm" type="button">开始批量标注选中图片</button>
+                                        </div>
+                                        <div class="small text-secondary" id="batch-auto-panel-status">
+                                            当前无批量任务
+                                        </div>
+                                    </div>
+
+                                    <div class="editor-card flex-grow-1 min-h-0">
+                                        <div class="fw-semibold mb-2">图片选择列表</div>
+                                        <div id="batch-image-list" class="sidebar-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-content" id="log-info">
+                                <div id="log-scroll-container" class="sidebar-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-2 bottom-toolbar-card">
+            <div class="card-header bg-white fw-semibold">全工具按钮区</div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-rect-btn" type="button">矩形框 (R)</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-pan-btn" type="button">手型拖动 (H)</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-delete-btn" type="button">删除选中 (Delete)</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-save-btn" type="button">保存项目状态 (Ctrl+S)</button>
+                    <button class="btn btn-outline-success btn-sm" id="bottom-export-coco-btn" type="button">导出 COCO JSON</button>
+                    <button class="btn btn-outline-danger btn-sm" id="bottom-auto-annotate-btn" type="button">自动标注</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-zoom-in-btn" type="button">放大</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-zoom-out-btn" type="button">缩小</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-fit-btn" type="button">适配</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="shortcut-help-panel" class="shortcut-help-panel d-none">
+        <div class="shortcut-help-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="fw-semibold">快捷键帮助</div>
+                <button id="close-shortcut-help-btn" class="btn btn-sm btn-outline-secondary" type="button">关闭</button>
+            </div>
+            <div class="small shortcut-list">
+                <div><strong>R</strong>：进入矩形框标注模式</div>
+                <div><strong>H</strong>：进入手型拖动模式</div>
+                <div><strong>Esc</strong>：取消当前创建中的框</div>
+                <div><strong>Delete</strong>：删除当前选中正式框</div>
+                <div><strong>Ctrl + S</strong>：保存项目状态</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container-custom"></div>
+
+    <script>
+        window.__ANNOTATE_PAGE_CONFIG__ = {{ config | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/annotate.js') }}"></script>
+</body>
+</html>
