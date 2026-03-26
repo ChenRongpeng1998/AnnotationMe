@@ -38,9 +38,15 @@
         batch: {
             running: false,
             timerId: null,
-            lastProcessed: -1
+            lastProcessed: -1,
+            lastLogCount: 0
         },
+        ui:{
+            showBoxLabels: true,
+            leftPanelCollapsed: false,
+            rightPanelCollapsed: false
 
+        },
         suppressNextStageClick: false,
 
         imageMeta: {
@@ -51,6 +57,10 @@
     };
 
     const leftToolbarButtons = document.getElementById("left-toolbar-buttons");
+    const annotateMainLayout = document.getElementById("annotate-main-layout");
+    const annotateLeftCol = document.getElementById("annotate-left-col");
+    const annotateCenterCol = document.getElementById("annotate-center-col");
+    const annotateRightCol = document.getElementById("annotate-right-col");
     const prevImageBtn = document.getElementById("prev-image-btn");
     const nextImageBtn = document.getElementById("next-image-btn");
     const imageIndexText = document.getElementById("image-index-text");
@@ -71,6 +81,10 @@
     const batchImageList = document.getElementById("batch-image-list");
     const batchSelectAllBtn = document.getElementById("batch-select-all-btn");
     const batchUnselectAllBtn = document.getElementById("batch-unselect-all-btn");
+    const batchSelectUpBtn = document.getElementById("batch-select-up-btn");
+    const batchUnselectUpBtn = document.getElementById("batch-unselect-up-btn");
+    const batchSelectDownBtn = document.getElementById("batch-select-down-btn");
+    const batchUnselectDownBtn = document.getElementById("batch-unselect-down-btn");
     const batchStartBtn = document.getElementById("batch-start-btn");
 
     const imageStage = document.getElementById("image-stage");
@@ -110,6 +124,11 @@
     const convertSelectedTemporaryBtn = document.getElementById("convert-selected-temporary-btn");
 
     const openShortcutHelpBtn = document.getElementById("open-shortcut-help-btn");
+    const toggleLeftPanelBtn = document.getElementById("toggle-left-panel-btn");
+    const toggleRightPanelBtn = document.getElementById("toggle-right-panel-btn");
+    const leftPanelCollapseBtn = document.getElementById("left-panel-collapse-btn");
+    const rightPanelCollapseBtn = document.getElementById("right-panel-collapse-btn");
+    const toggleLabelVisibilityBtn = document.getElementById("toggle-label-visibility-btn");
     const closeShortcutHelpBtn = document.getElementById("close-shortcut-help-btn");
     const shortcutHelpPanel = document.getElementById("shortcut-help-panel");
     const toastContainer = document.getElementById("toast-container");
@@ -123,6 +142,7 @@
     const bottomRectBtn = document.getElementById("bottom-rect-btn");
     const bottomPanBtn = document.getElementById("bottom-pan-btn");
     const bottomDeleteBtn = document.getElementById("bottom-delete-btn");
+    const bottomToggleLabelBtn = document.getElementById("bottom-toggle-label-btn");
     const bottomSaveBtn = document.getElementById("bottom-save-btn");
     const bottomExportCocoBtn = document.getElementById("bottom-export-coco-btn");
     const bottomAutoAnnotateBtn = document.getElementById("bottom-auto-annotate-btn");
@@ -162,7 +182,37 @@
         logList.appendChild(item);
         logList.scrollTop = logList.scrollHeight;
     }
+    function updateLabelToggleButtons() {
+        const text = state.ui.showBoxLabels ? "隐藏标签 (L)" : "显示标签 (L)";
 
+        if (toggleLabelVisibilityBtn) {
+            toggleLabelVisibilityBtn.textContent = text;
+            toggleLabelVisibilityBtn.className = state.ui.showBoxLabels
+                ? "btn btn-outline-secondary btn-sm"
+                : "btn btn-secondary btn-sm";
+        }
+
+        if (bottomToggleLabelBtn) {
+            bottomToggleLabelBtn.textContent = text;
+            bottomToggleLabelBtn.className = state.ui.showBoxLabels
+                ? "btn btn-outline-secondary btn-sm"
+                : "btn btn-secondary btn-sm";
+        }
+    }
+
+    function toggleBoxLabels() {
+        state.ui.showBoxLabels = !state.ui.showBoxLabels;
+        updateLabelToggleButtons();
+        renderAllAnnotationUi();
+
+        if (state.ui.showBoxLabels) {
+            addLog("已显示框标签");
+            showToast("已显示框标签", "success");
+        } else {
+            addLog("已隐藏框标签");
+            showToast("已隐藏框标签", "success");
+        }
+    }
     function safeFetchJson(url, options = {}, fallbackMessage = "请求失败") {
         return fetch(url, options)
             .then(async (response) => {
@@ -179,6 +229,83 @@
 
                 return data;
             });
+    }
+    function loadPanelUiState() {
+        try {
+            const leftValue = window.localStorage.getItem("annotate_left_panel_collapsed");
+            const rightValue = window.localStorage.getItem("annotate_right_panel_collapsed");
+
+            state.ui.leftPanelCollapsed = leftValue === "1";
+            state.ui.rightPanelCollapsed = rightValue === "1";
+        } catch (error) {
+            state.ui.leftPanelCollapsed = false;
+            state.ui.rightPanelCollapsed = false;
+        }
+    }
+
+    function savePanelUiState() {
+        try {
+            window.localStorage.setItem(
+                "annotate_left_panel_collapsed",
+                state.ui.leftPanelCollapsed ? "1" : "0"
+            );
+            window.localStorage.setItem(
+                "annotate_right_panel_collapsed",
+                state.ui.rightPanelCollapsed ? "1" : "0"
+            );
+        } catch (error) {
+            // 忽略本地存储异常
+        }
+    }
+
+    function updatePanelButtons() {
+        if (toggleLeftPanelBtn) {
+            toggleLeftPanelBtn.textContent = state.ui.leftPanelCollapsed ? "展开工具栏" : "收起工具栏";
+        }
+        if (toggleRightPanelBtn) {
+            toggleRightPanelBtn.textContent = state.ui.rightPanelCollapsed ? "展开信息栏" : "收起信息栏";
+        }
+        if (leftPanelCollapseBtn) {
+            leftPanelCollapseBtn.textContent = state.ui.leftPanelCollapsed ? "展开" : "收起";
+        }
+        if (rightPanelCollapseBtn) {
+            rightPanelCollapseBtn.textContent = state.ui.rightPanelCollapsed ? "展开" : "收起";
+        }
+    }
+
+    function applyPanelLayout() {
+        if (annotateLeftCol) {
+            annotateLeftCol.classList.toggle("panel-collapsed", !!state.ui.leftPanelCollapsed);
+        }
+        if (annotateRightCol) {
+            annotateRightCol.classList.toggle("panel-collapsed", !!state.ui.rightPanelCollapsed);
+        }
+
+        updatePanelButtons();
+
+        window.setTimeout(() => {
+            if (state.imageMeta.loaded) {
+                fitImageToViewport();
+            }
+        }, 30);
+    }
+
+    function toggleLeftPanel() {
+        state.ui.leftPanelCollapsed = !state.ui.leftPanelCollapsed;
+        savePanelUiState();
+        applyPanelLayout();
+        addLog(state.ui.leftPanelCollapsed ? "已收起常用工具栏" : "已展开常用工具栏");
+    }
+
+    function toggleRightPanel() {
+        state.ui.rightPanelCollapsed = !state.ui.rightPanelCollapsed;
+        savePanelUiState();
+        applyPanelLayout();
+        addLog(state.ui.rightPanelCollapsed ? "已收起信息栏" : "已展开信息栏");
+    }
+    function getStartImageFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        return (params.get("start_image") || "").trim();
     }
 
     function getCurrentImage() {
@@ -344,16 +471,31 @@
         return [left, top, right, bottom];
     }
 
-    async function fetchAndMergeImageState(relativePath, forceSelectAllTemp = false) {
+    async function fetchAndMergeImageState(
+    relativePath,
+    forceSelectAllTemp = false,
+    consumePending = false
+) {
         if (!relativePath) {
             return;
         }
         try {
-            const result = await safeFetchJson(`/api/image-state?relative_path=${encodeURIComponent(relativePath)}`, {}, "获取图片状态失败");
+            const query = new URLSearchParams({
+                relative_path: relativePath,
+                consume_pending: consumePending ? "1" : "0"
+            });
+            const result = await safeFetchJson(`/api/image-state?${query.toString()}`, {}, "获取图片状态失败");
             if (!result.success) {
                 return;
             }
             state.imageStates[relativePath] = result.image_state;
+            if (result.has_pending_batch_result) {
+                if (consumePending) {
+                    addLog(`已读取并清除批量临时结果：${relativePath}`);
+                } else {
+                    addLog(`已加载批量临时结果：${relativePath}`);
+                }
+            }
             if (getCurrentRelativePath() === relativePath) {
                 syncSelectedTemporaryIdsWithCurrentState(forceSelectAllTemp);
                 renderAllAnnotationUi();
@@ -420,6 +562,8 @@
         batchAutoProgressText.textContent = `进度：${processed} / ${total}`;
         batchAutoCurrentText.textContent = `当前：${currentImage}`;
 
+        const pendingCount = Number(batchState?.pending_count || 0);
+
         batchAutoPanelStatus.innerHTML = `
             <div>状态：${running ? "运行中" : "空闲"}</div>
             <div>总数：${total}</div>
@@ -427,6 +571,7 @@
             <div>成功：${successCount}</div>
             <div>失败：${failedCount}</div>
             <div>当前图片：${currentImage}</div>
+            <div>待切换加载结果：${pendingCount}</div>
         `;
     }
 
@@ -482,13 +627,64 @@
         state.selectedBatchRelativePaths = new Set(state.images.map(item => item.relative_path));
         renderBatchImageList();
     }
-
-    async function syncCurrentImageStateFromServer() {
-        const relativePath = getCurrentRelativePath();
-        if (!relativePath) {
+    function selectBatchRangeByCurrent(direction, checked) {
+        if (!state.images.length) {
+            showToast("当前没有图片可供操作", "error");
             return;
         }
-        await fetchAndMergeImageState(relativePath, false);
+
+        if (state.currentIndex < 0 || state.currentIndex >= state.images.length) {
+            showToast("当前图像无效，无法执行范围选择", "error");
+            return;
+        }
+
+        let startIndex = 0;
+        let endIndex = state.currentIndex;
+
+        if (direction === "down") {
+            startIndex = state.currentIndex;
+            endIndex = state.images.length - 1;
+        }
+
+        for (let i = startIndex; i <= endIndex; i += 1) {
+            const relativePath = state.images[i]?.relative_path;
+            if (!relativePath) continue;
+
+            if (checked) {
+                state.selectedBatchRelativePaths.add(relativePath);
+            } else {
+                state.selectedBatchRelativePaths.delete(relativePath);
+            }
+        }
+
+        renderBatchImageList();
+
+        const current = getCurrentImage();
+        const currentName = current?.relative_path || "当前图像";
+
+        if (direction === "up" && checked) {
+            addLog(`批量选择：已从 ${currentName} 往上全选`);
+            showToast("已从当前图像往上全选", "success");
+        } else if (direction === "up" && !checked) {
+            addLog(`批量选择：已从 ${currentName} 往上全不选`);
+            showToast("已从当前图像往上全不选", "success");
+        } else if (direction === "down" && checked) {
+            addLog(`批量选择：已从 ${currentName} 往下全选`);
+            showToast("已从当前图像往下全选", "success");
+        } else if (direction === "down" && !checked) {
+            addLog(`批量选择：已从 ${currentName} 往下全不选`);
+            showToast("已从当前图像往下全不选", "success");
+        }
+    }
+    function appendBatchLogsFromState(batchState) {
+        const logs = Array.isArray(batchState?.logs) ? batchState.logs : [];
+        const startIndex = Math.max(0, Number(state.batch.lastLogCount || 0));
+
+        for (let i = startIndex; i < logs.length; i += 1) {
+            addLog(`[批量] ${logs[i]}`);
+        }
+
+        state.batch.lastLogCount = logs.length;
     }
 
     async function pollBatchStatus() {
@@ -500,12 +696,8 @@
 
             const batchState = result.batch_state || {};
             updateBatchStatusUi(batchState);
-
-            const processed = Number(batchState.processed || 0);
-            if (processed !== state.batch.lastProcessed) {
-                state.batch.lastProcessed = processed;
-                await syncCurrentImageStateFromServer();
-            }
+            appendBatchLogsFromState(batchState);
+            state.batch.lastProcessed = Number(batchState.processed || 0);
 
             if (batchState.running) {
                 state.batch.running = true;
@@ -518,7 +710,6 @@
                     window.clearInterval(state.batch.timerId);
                     state.batch.timerId = null;
                 }
-                await syncCurrentImageStateFromServer();
             }
         } catch (error) {
             addLog(`批量状态轮询失败：${error.message}`);
@@ -554,6 +745,8 @@
 
             state.batch.running = true;
             state.batch.lastProcessed = -1;
+            state.batch.lastLogCount = 0;
+            appendBatchLogsFromState(result.batch_state || {});
 
             if (state.batch.timerId) {
                 window.clearInterval(state.batch.timerId);
@@ -982,11 +1175,12 @@
             box.style.borderWidth = `${Number(state.config.bbox_line_width || 2)}px`;
             box.dataset.annoId = String(annotation.anno_id);
             box.title = `anno_id: ${annotation.anno_id}\ncategory: ${annotation.category_name}\nbbox: [${annotation.bbox.map(v => Math.round(v)).join(", ")}]`;
-
-            const label = document.createElement("div");
-            label.className = "annotation-label";
-            label.textContent = `${annotation.category_name} | #${annotation.anno_id}`;
-            box.appendChild(label);
+            if (state.ui.showBoxLabels) {
+                const label = document.createElement("div");
+                label.className = "annotation-label";
+                label.textContent = `${annotation.category_name} | #${annotation.anno_id}`;
+                box.appendChild(label);
+            }
 
             box.addEventListener("click", function (event) {
                 event.stopPropagation();
@@ -1029,12 +1223,13 @@
             box.style.height = `${y2 - y1}px`;
             box.style.borderWidth = `${Number(state.config.bbox_line_width || 2)}px`;
             box.title = `temporary_id: ${annotation.temporary_id}\nlabel: ${annotation.label || annotation.category_name}\nscore: ${Number(annotation.score).toFixed(4)}\nbbox: [${annotation.bbox.map(v => Math.round(v)).join(", ")}]`;
-
-            const label = document.createElement("div");
-            label.className = "temporary-label";
-            const displayLabel = annotation.label || annotation.category_name;
-            label.textContent = `${displayLabel} | t#${annotation.temporary_id} | ${Number(annotation.score).toFixed(3)}`;
-            box.appendChild(label);
+            if (state.ui.showBoxLabels) {
+                const label = document.createElement("div");
+                label.className = "temporary-label";
+                const displayLabel = annotation.label || annotation.category_name;
+                label.textContent = `${displayLabel} | t#${annotation.temporary_id} | ${Number(annotation.score).toFixed(3)}`;
+                box.appendChild(label);
+            }
 
             temporaryLayer.appendChild(box);
         });
@@ -1321,31 +1516,42 @@
         renderAllAnnotationUi();
     }
 
-    async function saveProjectState() {
-        try {
-            const result = await safeFetchJson("/api/project/save", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    image_states: state.imageStates
-                })
-            }, "保存失败");
+    async function saveProjectState(options = {}) {
+    const {
+        mergeAllPendingBeforeSave = true
+    } = options;
 
-            if (typeof result.next_anno_id === "number") {
-                state.nextAnnoId = result.next_anno_id;
+    try {
+        if (mergeAllPendingBeforeSave) {
+            for (const imageItem of state.images) {
+                if (!imageItem || !imageItem.relative_path) continue;
+                await fetchAndMergeImageState(imageItem.relative_path, false, true);
             }
-
-            addLog(result.message || "保存成功");
-            showToast(result.message || "保存成功", "success");
-            return true;
-        } catch (error) {
-            addLog(`保存失败: ${error.message}`);
-            showToast(error.message, "error");
-            return false;
         }
+
+        const result = await safeFetchJson("/api/project/save", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                image_states: state.imageStates
+            })
+        }, "保存失败");
+
+        if (typeof result.next_anno_id === "number") {
+            state.nextAnnoId = result.next_anno_id;
+        }
+
+        addLog(result.message || "保存成功");
+        showToast(result.message || "保存成功", "success");
+        return true;
+    } catch (error) {
+        addLog(`保存失败: ${error.message}`);
+        showToast(error.message, "error");
+        return false;
     }
+}
 
     async function exportCocoJson() {
         const saved = await saveProjectState();
@@ -1467,13 +1673,25 @@
             state.imageStates[current.relative_path] = result.image_state;
 
             if (typeof result.next_anno_id === "number") {
+
                 state.nextAnnoId = result.next_anno_id;
             }
 
             if (action === "convert_selected") {
-                selectAllCurrentTemporaryIds();
+                state.selectedTemporaryIdsMap[current.relative_path] = new Set();
+                const annotations = Array.isArray(result.image_state?.annotations)
+                    ? result.image_state.annotations
+                    : [];
+
+                if (annotations.length > 0) {
+                    const lastAnno = annotations[annotations.length - 1];
+                    state.selectedAnnoId = Number(lastAnno.anno_id);
+                } else {
+                    state.selectedAnnoId = null;
+                }
             } else if (action === "clear_all") {
                 state.selectedTemporaryIdsMap[current.relative_path] = new Set();
+                state.selectedAnnoId = null;
             }
 
             renderAllAnnotationUi();
@@ -1522,7 +1740,7 @@
         updateImageStatus();
         resetImageSessionState();
 
-        await fetchAndMergeImageState(current.relative_path, true);
+        await fetchAndMergeImageState(current.relative_path, true, false);
 
         imageEmptyPlaceholder.style.display = "none";
         canvasContent.style.display = "block";
@@ -1533,13 +1751,42 @@
         updateStageHint("图像加载中...");
     }
 
-    async function showImageByIndex(index) {
-        if (index < 0 || index >= state.images.length) return;
-        state.currentIndex = index;
-        await updateImageDisplay();
-        const current = state.images[state.currentIndex];
-        addLog(`切换图像: ${current.relative_path}`);
+    async function showImageByIndex(index, options = {}) {
+    if (index < 0 || index >= state.images.length) return false;
+    if (index === state.currentIndex) return true;
+
+    const {
+        autoSaveBeforeChange = true,
+        silentAutoSave = false
+    } = options;
+
+    if (autoSaveBeforeChange) {
+        if (!silentAutoSave) {
+            addLog("切图前自动保存项目状态...");
+        }
+
+        const saved = await saveProjectState({
+            mergeAllPendingBeforeSave: false
+        });
+        if (!saved) {
+            addLog("切图已取消：自动保存失败");
+            showToast("自动保存失败，已取消切图", "error");
+            return false;
+        }
+
+        if (!silentAutoSave) {
+            addLog("切图前自动保存成功");
+        }
     }
+
+    state.currentIndex = index;
+    await updateImageDisplay();
+
+
+    const current = state.images[state.currentIndex];
+    addLog(`切换图像: ${current.relative_path}`);
+    return true;
+}
 
     function showPrevImage() {
         if (state.currentIndex > 0) {
@@ -1673,6 +1920,8 @@
         fitImageBtn.addEventListener("click", fitImageToViewport);
         zoomInBtn.addEventListener("click", () => zoomAtViewportCenter(1.2));
         zoomOutBtn.addEventListener("click", () => zoomAtViewportCenter(1 / 1.2));
+        toggleLabelVisibilityBtn.addEventListener("click", toggleBoxLabels);
+        bottomToggleLabelBtn.addEventListener("click", toggleBoxLabels);
         saveProjectBtn.addEventListener("click", saveProjectState);
         exportCocoBtn.addEventListener("click", exportCocoJson);
         runAutoAnnotateBtn.addEventListener("click", runAutoAnnotate);
@@ -1687,6 +1936,30 @@
             state.selectedBatchRelativePaths = new Set();
             renderBatchImageList();
         });
+
+        if (batchSelectUpBtn) {
+            batchSelectUpBtn.addEventListener("click", function () {
+                selectBatchRangeByCurrent("up", true);
+            });
+        }
+
+        if (batchUnselectUpBtn) {
+            batchUnselectUpBtn.addEventListener("click", function () {
+                selectBatchRangeByCurrent("up", false);
+            });
+        }
+
+        if (batchSelectDownBtn) {
+            batchSelectDownBtn.addEventListener("click", function () {
+                selectBatchRangeByCurrent("down", true);
+            });
+        }
+
+        if (batchUnselectDownBtn) {
+            batchUnselectDownBtn.addEventListener("click", function () {
+                selectBatchRangeByCurrent("down", false);
+            });
+        }
 
         batchStartBtn.addEventListener("click", startBatchAutoAnnotate);
 
@@ -1704,6 +1977,19 @@
         bottomFitBtn.addEventListener("click", fitImageToViewport);
 
         deleteSelectedBtn.addEventListener("click", deleteSelectedAnnotation);
+
+        if (toggleLeftPanelBtn) {
+            toggleLeftPanelBtn.addEventListener("click", toggleLeftPanel);
+        }
+        if (toggleRightPanelBtn) {
+            toggleRightPanelBtn.addEventListener("click", toggleRightPanel);
+        }
+        if (leftPanelCollapseBtn) {
+            leftPanelCollapseBtn.addEventListener("click", toggleLeftPanel);
+        }
+        if (rightPanelCollapseBtn) {
+            rightPanelCollapseBtn.addEventListener("click", toggleRightPanel);
+        }
     }
 
     function bindStageEvents() {
@@ -1746,14 +2032,25 @@
             const tagName = (event.target.tagName || "").toLowerCase();
             const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select";
             if (isTyping) return;
-
-            if (event.key.toLowerCase() === "r") {
+            if (event.key.toLowerCase() === "v") {
+                event.preventDefault();
+                setMode("select");
+            } else if (event.key.toLowerCase() === "r") {
                 event.preventDefault();
                 setMode("rect");
             } else if (event.key.toLowerCase() === "h") {
                 event.preventDefault();
                 setMode("pan");
-            }
+            }else if (event.key.toLowerCase() === "s") {
+            event.preventDefault();
+            applyTemporaryAction("convert_selected");
+        } else if (event.key.toLowerCase() === "d" && !event.repeat) {
+            event.preventDefault();
+            showNextImage();
+        }else if (event.key.toLowerCase() === "l" && !event.repeat) {
+            event.preventDefault();
+            toggleBoxLabels();
+        }
         });
     }
 
@@ -1842,6 +2139,8 @@
 
         if (result.batch_state) {
             updateBatchStatusUi(result.batch_state);
+            state.batch.lastLogCount = 0;
+            appendBatchLogsFromState(result.batch_state);
             if (result.batch_state.running) {
                 state.batch.running = true;
                 if (state.batch.timerId) {
@@ -1854,7 +2153,13 @@
 
     async function initPage() {
         try {
-            const result = await safeFetchJson("/api/annotate/init", {}, "初始化失败");
+
+            const startImage = getStartImageFromQuery();
+            const initUrl = startImage
+                ? `/api/annotate/init?start_image=${encodeURIComponent(startImage)}`
+                : "/api/annotate/init";
+
+            const result = await safeFetchJson(initUrl, {}, "初始化失败");
 
             if (!result.success) {
                 addLog(result.message || "初始化失败");
@@ -1869,9 +2174,16 @@
             renderBatchImageList();
             updateModeUi();
             updateToolbarLinkedState();
+            updateLabelToggleButtons();
             await updateImageDisplay();
 
-            if (state.images.length > 0) {
+            if (state.images.length > 0 && state.currentIndex >= 0) {
+                const initialIndex = state.currentIndex;
+                state.currentIndex = -1;
+                await showImageByIndex(initialIndex, {
+                    autoSaveBeforeChange: false,
+                    silentAutoSave: true
+                });
                 addLog(`已加载 ${state.images.length} 张图像`);
                 showToast(`已加载 ${state.images.length} 张图像`, "success");
             } else {
@@ -1893,6 +2205,7 @@
         }
     });
 
+    loadPanelUiState();
     bindTopAndBottomButtons();
     bindStageEvents();
     bindKeyboardShortcuts();
@@ -1900,5 +2213,6 @@
     bindHelpPanelEvents();
     bindImageEvents();
     initTabs();
+    applyPanelLayout();
     initPage();
 })();

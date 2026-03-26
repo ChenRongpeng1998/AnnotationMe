@@ -18,3 +18,5 @@ dist/
 .DS_Store
 Thumbs.db
 
+output
+user_config.json

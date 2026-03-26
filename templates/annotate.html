@@ -19,10 +19,12 @@
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <button class="btn btn-outline-secondary btn-sm" id="open-shortcut-help-btn" type="button">快捷键帮助</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="toggle-label-visibility-btn" type="button">隐藏标签 (L)</button>
                     <button class="btn btn-outline-secondary btn-sm" id="save-project-btn" type="button">保存项目状态</button>
                     <button class="btn btn-outline-success btn-sm" id="export-coco-btn" type="button">导出 COCO JSON</button>
                     <button class="btn btn-outline-danger btn-sm" id="run-auto-annotate-btn" type="button">自动标注</button>
                     <button class="btn btn-outline-secondary btn-sm" onclick="window.location.href='/'">返回设置页</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="window.location.href='/overview'">返回图片总览</button>
                 </div>
             </div>
         </div>
@@ -44,17 +46,20 @@
             </div>
         </div>
 
-        <div class="row g-2 annotate-main-row">
-            <div class="col-12 col-lg-2">
+        <div class="annotate-main-row annotate-main-layout" id="annotate-main-layout">
+            <div class="annotate-left-col" id="annotate-left-col">
                 <div class="card border-0 shadow-sm h-100 panel-card">
-                    <div class="card-header bg-white fw-semibold">常用工具栏</div>
+                    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+                        <span>常用工具栏</span>
+                        <button class="btn btn-sm btn-outline-secondary" id="left-panel-collapse-btn" type="button">收起</button>
+                    </div>
                     <div class="card-body">
                         <div id="left-toolbar-buttons" class="d-grid gap-2 toolbar-button-list"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-12 col-lg-7">
+            <div class="annotate-center-col" id="annotate-center-col">
                 <div class="card border-0 shadow-sm h-100 panel-card">
                     <div class="card-body d-flex flex-column gap-2 center-panel-body">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 workspace-header">
@@ -66,6 +71,8 @@
                                 <button id="fit-image-btn" class="btn btn-outline-secondary btn-sm" type="button">适配</button>
                                 <button id="zoom-in-btn" class="btn btn-outline-secondary btn-sm" type="button">放大</button>
                                 <button id="zoom-out-btn" class="btn btn-outline-secondary btn-sm" type="button">缩小</button>
+                                <button class="btn btn-outline-secondary btn-sm" id="toggle-left-panel-btn" type="button">收起工具栏</button>
+                                <button class="btn btn-outline-secondary btn-sm" id="toggle-right-panel-btn" type="button">收起信息栏</button>
                             </div>
                             <div class="d-flex flex-wrap gap-3 text-secondary small">
                                 <span id="image-index-text">0 / 0</span>
@@ -89,16 +96,19 @@
                             </div>
 
                             <div id="image-empty-placeholder" class="image-empty-placeholder">
-                                当前没有可显示的图像，请先返回设置页配置图像目录。
+                                当前没有可显示的图像，请先返回设置页配置图像目录，或进入图片总览选择图片。
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-12 col-lg-3">
+            <div class="annotate-right-col" id="annotate-right-col">
                 <div class="card border-0 shadow-sm h-100 panel-card right-panel-card">
-                    <div class="card-header bg-white fw-semibold">信息栏</div>
+                    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+                        <span>信息栏</span>
+                        <button class="btn btn-sm btn-outline-secondary" id="right-panel-collapse-btn" type="button">收起</button>
+                    </div>
                     <div class="card-body d-flex flex-column min-h-0">
                         <ul class="nav nav-tabs flex-wrap" id="infoTabs" role="tablist">
                             <li class="nav-item" role="presentation">
@@ -220,6 +230,11 @@
                                         <div class="d-flex flex-wrap gap-2 mb-2">
                                             <button id="batch-select-all-btn" class="btn btn-outline-secondary btn-sm" type="button">全选</button>
                                             <button id="batch-unselect-all-btn" class="btn btn-outline-secondary btn-sm" type="button">全不选</button>
+                                            <button id="batch-select-up-btn" class="btn btn-outline-secondary btn-sm" type="button">从当前往上全选</button>
+                                            <button id="batch-unselect-up-btn" class="btn btn-outline-secondary btn-sm" type="button">从当前往上全不选</button>
+                                            <button id="batch-select-down-btn" class="btn btn-outline-secondary btn-sm" type="button">从当前往下全选</button>
+                                            <button id="batch-unselect-down-btn" class="btn btn-outline-secondary btn-sm" type="button">从当前往下全不选</button>
+
                                             <button id="batch-start-btn" class="btn btn-danger btn-sm" type="button">开始批量标注选中图片</button>
                                         </div>
                                         <div class="small text-secondary" id="batch-auto-panel-status">
@@ -251,6 +266,7 @@
                     <button class="btn btn-outline-secondary btn-sm" id="bottom-pan-btn" type="button">手型拖动 (H)</button>
                     <button class="btn btn-outline-secondary btn-sm" id="bottom-delete-btn" type="button">删除选中 (Delete)</button>
                     <button class="btn btn-outline-secondary btn-sm" id="bottom-save-btn" type="button">保存项目状态 (Ctrl+S)</button>
+                    <button class="btn btn-outline-secondary btn-sm" id="bottom-toggle-label-btn" type="button">隐藏标签 (L)</button>
                     <button class="btn btn-outline-success btn-sm" id="bottom-export-coco-btn" type="button">导出 COCO JSON</button>
                     <button class="btn btn-outline-danger btn-sm" id="bottom-auto-annotate-btn" type="button">自动标注</button>
                     <button class="btn btn-outline-secondary btn-sm" id="bottom-zoom-in-btn" type="button">放大</button>

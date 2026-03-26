@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像标注系统 - 图片总览</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="page-overview bootstrap-page-bg">
+    <div class="container-fluid py-3 py-md-4">
+        <div class="card border-0 shadow-sm mb-3 overview-toolbar-card">
+            <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+                <div>
+                    <h1 class="h4 mb-1">图片总览</h1>
+                    <div class="text-secondary small">
+                        选择任意一张图片后，将直接进入该图片的标注界面
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <input
+                        type="text"
+                        id="overview-search-input"
+                        class="form-control form-control-sm overview-search-input"
+                        placeholder="按文件名或相对路径筛选"
+                    >
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.location.href='/'">
+                        返回设置页
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="refresh-overview-btn">
+                        刷新列表
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm overview-grid-card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div id="overview-count-text" class="overview-count-text small">
+                        共 0 张图片
+                    </div>
+                </div>
+
+                <div id="overview-empty-box" class="overview-empty-box d-none">
+                    <div>
+                        <div class="mb-2">当前未扫描到图片</div>
+                        <div class="small">请先返回设置页检查图像目录配置是否正确</div>
+                    </div>
+                </div>
+
+                <div id="overview-grid" class="row g-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/overview.js') }}"></script>
+</body>
+</html>

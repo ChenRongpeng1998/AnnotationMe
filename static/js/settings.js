@@ -1,3 +1,4 @@
+// static/js/settings.js
 (function () {
     const messageBox = document.getElementById("settings-message");
     const saveBtn = document.getElementById("save-btn");
@@ -12,7 +13,6 @@
     const autoAnnotateApiUrlInput = document.getElementById("auto_annotate_api_url");
     const autoAnnotateTokenInput = document.getElementById("auto_annotate_token");
     const autoAnnotateRequestTypeInput = document.getElementById("auto_annotate_request_type");
-
     const toolbarOptionsContainer = document.getElementById("toolbar-options");
 
     function setMessage(text, type = "") {

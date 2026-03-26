@@ -577,3 +577,129 @@ body {
         max-width: none;
     }
 }
+.page-overview {
+    min-height: 100vh;
+}
+
+.overview-toolbar-card,
+.overview-grid-card,
+.overview-image-card {
+    border-radius: 12px;
+}
+
+.overview-thumb-wrap {
+    width: 100%;
+    height: 180px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e9ecef;
+}
+
+.overview-thumb {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.overview-image-name {
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.overview-image-path {
+    font-family: Consolas, "Courier New", monospace;
+    word-break: break-all;
+}
+
+.overview-empty-box {
+    min-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    text-align: center;
+    border: 1px dashed #ced4da;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.overview-count-text {
+    color: #6c757d;
+}
+
+.overview-search-input {
+    max-width: 360px;
+}
+.annotate-main-layout {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    gap: 0.5rem;
+}
+
+.annotate-left-col,
+.annotate-right-col,
+.annotate-center-col {
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.annotate-left-col {
+    flex: 0 0 220px;
+    min-width: 220px;
+    max-width: 220px;
+}
+
+.annotate-right-col {
+    flex: 0 0 360px;
+    min-width: 360px;
+    max-width: 360px;
+}
+
+.annotate-center-col {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.annotate-left-col.panel-collapsed,
+.annotate-right-col.panel-collapsed {
+    display: none !important;
+}
+
+@media (max-width: 991.98px) {
+    .annotate-main-layout {
+        display: block;
+        overflow: visible;
+    }
+
+    .annotate-left-col,
+    .annotate-right-col,
+    .annotate-center-col {
+        display: block;
+        height: auto;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .annotate-left-col,
+    .annotate-right-col {
+        flex: none;
+    }
+
+    .annotate-center-col {
+        flex: none;
+    }
+
+    .annotate-left-col.panel-collapsed,
+    .annotate-right-col.panel-collapsed {
+        display: none !important;
+    }
+}

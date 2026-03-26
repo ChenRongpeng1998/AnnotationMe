@@ -1,3 +1,5 @@
+# app.py
+from copy import deepcopy
 from pathlib import Path
 from threading import Thread, Lock
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, url_for
@@ -29,8 +31,10 @@ AUTO_BATCH_STATE = {
     "success_count": 0,
     "failed_count": 0,
     "current_image": "",
+    "selected_relative_paths": [],
     "logs": [],
 }
+AUTO_BATCH_PENDING = {}
 
 
 def append_batch_log(message: str):
@@ -40,7 +44,7 @@ def append_batch_log(message: str):
             AUTO_BATCH_STATE["logs"] = AUTO_BATCH_STATE["logs"][-200:]
 
 
-def reset_batch_state(total: int):
+def reset_batch_state(total: int, selected_relative_paths: list[str]):
     with AUTO_BATCH_LOCK:
         AUTO_BATCH_STATE["running"] = True
         AUTO_BATCH_STATE["total"] = int(total)
@@ -48,6 +52,7 @@ def reset_batch_state(total: int):
         AUTO_BATCH_STATE["success_count"] = 0
         AUTO_BATCH_STATE["failed_count"] = 0
         AUTO_BATCH_STATE["current_image"] = ""
+        AUTO_BATCH_STATE["selected_relative_paths"] = list(selected_relative_paths)
         AUTO_BATCH_STATE["logs"] = []
 
 
@@ -55,6 +60,7 @@ def finish_batch_state():
     with AUTO_BATCH_LOCK:
         AUTO_BATCH_STATE["running"] = False
         AUTO_BATCH_STATE["current_image"] = ""
+        AUTO_BATCH_STATE["selected_relative_paths"] = []
 
 
 def snapshot_batch_state():
@@ -66,8 +72,29 @@ def snapshot_batch_state():
             "success_count": AUTO_BATCH_STATE["success_count"],
             "failed_count": AUTO_BATCH_STATE["failed_count"],
             "current_image": AUTO_BATCH_STATE["current_image"],
+            "selected_relative_paths": list(AUTO_BATCH_STATE["selected_relative_paths"]),
+            "pending_count": len(AUTO_BATCH_PENDING),
             "logs": list(AUTO_BATCH_STATE["logs"]),
         }
+
+
+def clear_pending_batch_result(relative_path: str):
+    with AUTO_BATCH_LOCK:
+        AUTO_BATCH_PENDING.pop(relative_path, None)
+
+
+def set_pending_batch_result(relative_path: str, image_state: dict):
+    with AUTO_BATCH_LOCK:
+        AUTO_BATCH_PENDING[relative_path] = deepcopy(image_state)
+
+
+def get_pending_batch_result(relative_path: str, consume: bool = False):
+    with AUTO_BATCH_LOCK:
+        if consume:
+            pending = AUTO_BATCH_PENDING.pop(relative_path, None)
+        else:
+            pending = AUTO_BATCH_PENDING.get(relative_path)
+        return deepcopy(pending) if pending is not None else None
 
 
 def build_project_state_from_disk(config: dict):
@@ -94,7 +121,61 @@ def find_current_image(images, relative_path: str):
     return None
 
 
-def run_auto_annotate_for_relative_path(config: dict, relative_path: str):
+def get_selected_index(images, selected_relative_path: str):
+    if not images:
+        return -1
+
+    selected_relative_path = str(selected_relative_path or "").strip()
+    if not selected_relative_path:
+        return 0
+
+    for index, item in enumerate(images):
+        if item.get("relative_path") == selected_relative_path:
+            return index
+
+    return 0
+
+
+def build_image_state_response(
+    config: dict,
+    relative_path: str,
+    include_pending: bool = True,
+    consume_pending: bool = False
+):
+    images, project_state = build_project_state_from_disk(config)
+    current_image = find_current_image(images, relative_path)
+    if current_image is None:
+        raise ValueError("未找到当前图像元数据")
+
+    image_states = project_state.get("images", {})
+    if relative_path not in image_states:
+        raise ValueError("未找到当前图像状态")
+
+    image_state = deepcopy(image_states[relative_path])
+    has_pending_batch_result = False
+
+    if include_pending:
+        pending_image_state = get_pending_batch_result(
+            relative_path,
+            consume=consume_pending
+        )
+        if isinstance(pending_image_state, dict):
+            image_state["temporary_annotations"] = pending_image_state.get("temporary_annotations", [])
+            image_state = normalize_single_image_state(image_state)
+            has_pending_batch_result = True
+
+    return {
+        "image_state": image_state,
+        "has_pending_batch_result": has_pending_batch_result,
+        "image_meta": current_image,
+    }
+
+
+def run_auto_annotate_for_relative_path(config: dict, relative_path: str, persist_mode: str = "project_state"):
+    persist_mode = str(persist_mode or "project_state").strip().lower()
+    if persist_mode not in {"project_state", "pending_batch"}:
+        raise ValueError("persist_mode 非法")
+
     image_dir = config.get("image_dir", "")
     if not image_dir:
         return {
@@ -136,7 +217,7 @@ def run_auto_annotate_for_relative_path(config: dict, relative_path: str):
         return {
             "success": False,
             "message": "未找到当前图像状态",
-            "logs": [f"自动标注失败：未找到图像状态 {relative_path}"]
+            "logs": [f"自动标注失败：未找到当前图像状态 {relative_path}"]
         }
 
     api_url = config.get("auto_annotate_api_url", "")
@@ -260,34 +341,37 @@ def run_auto_annotate_for_relative_path(config: dict, relative_path: str):
     image_state["temporary_annotations"] = [
         normalize_temporary_annotation(item) for item in temporary_annotations
     ]
-    image_states[relative_path] = normalize_single_image_state(image_state)
-    project_state["images"] = image_states
-    save_project_state(config.get("output_dir", ""), project_state)
+    image_state = normalize_single_image_state(image_state)
 
-    logs.append(f"自动标注完成：采纳 {len(temporary_annotations)} 个临时框")
+    if persist_mode == "project_state":
+        clear_pending_batch_result(relative_path)
+        image_states[relative_path] = image_state
+        project_state["images"] = image_states
+        save_project_state(config.get("output_dir", ""), project_state)
+        logs.append(f"自动标注完成：采纳 {len(temporary_annotations)} 个临时框，并已写入项目状态")
+    else:
+        set_pending_batch_result(relative_path, image_state)
+        logs.append(f"自动标注完成：采纳 {len(temporary_annotations)} 个临时框，已写入批量临时缓存")
 
     return {
         "success": True,
         "message": "自动标注完成",
-        "image_state": image_states[relative_path],
-        "temporary_annotations": image_states[relative_path].get("temporary_annotations", []),
+        "image_state": image_state,
+        "temporary_annotations": image_state.get("temporary_annotations", []),
         "logs": logs
     }
 
 
-def batch_auto_annotate_worker():
+def batch_auto_annotate_worker(selected_relative_paths: list[str]):
     config = load_config()
-    images, _ = build_project_state_from_disk(config)
 
     try:
-        for image_item in images:
-            relative_path = image_item["relative_path"]
-
+        for relative_path in selected_relative_paths:
             with AUTO_BATCH_LOCK:
                 AUTO_BATCH_STATE["current_image"] = relative_path
 
             append_batch_log(f"开始自动标注：{relative_path}")
-            result = run_auto_annotate_for_relative_path(config, relative_path)
+            result = run_auto_annotate_for_relative_path(config, relative_path, persist_mode="pending_batch")
 
             with AUTO_BATCH_LOCK:
                 AUTO_BATCH_STATE["processed"] += 1
@@ -311,11 +395,26 @@ def settings_page():
     return render_template("settings.html")
 
 
+@app.route("/gallery")
+def gallery_page():
+    config = load_config()
+    return render_template("gallery.html", config=config)
+
+
 @app.route("/annotate")
 def annotate_page():
     config = load_config()
-    return render_template("annotate.html", config=config)
+    selected_relative_path = str(request.args.get("relative_path", "")).strip()
+    return render_template(
+        "annotate.html",
+        config=config,
+        selected_relative_path=selected_relative_path
+    )
 
+@app.route("/overview")
+def overview_page():
+    config = load_config()
+    return render_template("overview.html", config=config)
 
 @app.route("/api/config", methods=["GET"])
 def get_config():
@@ -337,7 +436,7 @@ def update_config():
             "success": True,
             "message": "配置已保存",
             "config": normalized_config,
-            "redirect_url": url_for("annotate_page")
+            "redirect_url": url_for("overview_page")
         })
     except Exception as exc:
         return jsonify({
@@ -364,6 +463,19 @@ def annotate_init():
     config = load_config()
     images, project_state = build_project_state_from_disk(config)
     image_states = project_state["images"]
+
+    start_image = str(request.args.get("start_image", "")).strip()
+
+    current_index = 0 if images else -1
+    if start_image and images:
+        matched_index = -1
+        for index, item in enumerate(images):
+            if str(item.get("relative_path", "")).strip() == start_image:
+                matched_index = index
+                break
+        if matched_index >= 0:
+            current_index = matched_index
+
     next_anno_id = compute_next_anno_id(
         image_states=image_states,
         annotation_id_start=config.get("annotation_id_start", 1)
@@ -376,10 +488,42 @@ def annotate_init():
         "image_states": image_states,
         "project_state": project_state,
         "count": len(images),
-        "current_index": 0 if images else -1,
+        "current_index": current_index,
         "next_anno_id": next_anno_id,
         "batch_state": snapshot_batch_state()
     })
+
+
+@app.route("/api/image-state", methods=["GET"])
+def get_image_state():
+    config = load_config()
+    relative_path = str(request.args.get("relative_path", "")).strip()
+    consume_pending = str(request.args.get("consume_pending", "0")).strip() == "1"
+
+    if not relative_path:
+        return jsonify({
+            "success": False,
+            "message": "缺少 relative_path"
+        }), 400
+
+    try:
+        result = build_image_state_response(
+            config,
+            relative_path,
+            include_pending=True,
+            consume_pending=consume_pending
+        )
+        return jsonify({
+            "success": True,
+            "image_state": result["image_state"],
+            "has_pending_batch_result": result["has_pending_batch_result"],
+            "image_meta": result["image_meta"]
+        })
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "message": f"获取图片状态失败: {str(exc)}"
+        }), 404
 
 
 @app.route("/api/project/save", methods=["POST"])
@@ -390,6 +534,28 @@ def save_project():
     image_states = payload.get("image_states", {})
     categories = config.get("categories", [])
 
+    if not isinstance(image_states, dict):
+        image_states = {}
+
+    with AUTO_BATCH_LOCK:
+        pending_snapshot = {
+            key: deepcopy(value)
+            for key, value in AUTO_BATCH_PENDING.items()
+        }
+    merged_pending_count = len(pending_snapshot)
+    print(f"[save_project] merge pending image count = {merged_pending_count}")
+    for relative_path, pending_image_state in pending_snapshot.items():
+        if not isinstance(pending_image_state, dict):
+            continue
+
+        if relative_path not in image_states or not isinstance(image_states[relative_path], dict):
+            image_states[relative_path] = pending_image_state
+            continue
+
+        image_states[relative_path]["temporary_annotations"] = deepcopy(
+            pending_image_state.get("temporary_annotations", [])
+        )
+
     try:
         project_state = normalize_project_state({
             "version": 1,
@@ -397,6 +563,7 @@ def save_project():
             "images": image_states
         })
         save_project_state(config.get("output_dir", ""), project_state)
+
 
         next_anno_id = compute_next_anno_id(
             image_states=project_state.get("images", {}),
@@ -452,7 +619,7 @@ def auto_annotate_current():
             "logs": ["自动标注失败：缺少 relative_path"]
         }), 400
 
-    result = run_auto_annotate_for_relative_path(config, relative_path)
+    result = run_auto_annotate_for_relative_path(config, relative_path, persist_mode="project_state")
     status_code = 200 if result.get("success") else 400
     if result.get("message") == "推理失败":
         status_code = 200
@@ -462,6 +629,8 @@ def auto_annotate_current():
 @app.route("/api/auto-annotate/batch/start", methods=["POST"])
 def auto_annotate_batch_start():
     config = load_config()
+    payload = request.get_json(silent=True) or {}
+    selected_relative_paths = payload.get("selected_relative_paths", [])
 
     if not str(config.get("auto_annotate_api_url", "")).strip():
         return jsonify({
@@ -469,11 +638,27 @@ def auto_annotate_batch_start():
             "message": "未配置自动标注 API URL"
         }), 400
 
-    images, _ = build_project_state_from_disk(config)
-    if not images:
+    if not isinstance(selected_relative_paths, list):
         return jsonify({
             "success": False,
-            "message": "当前没有可处理的图片"
+            "message": "selected_relative_paths 必须为数组"
+        }), 400
+
+    selected_relative_paths = [str(item).strip() for item in selected_relative_paths if str(item).strip()]
+    if not selected_relative_paths:
+        return jsonify({
+            "success": False,
+            "message": "请至少选择一张图片"
+        }), 400
+
+    images, _ = build_project_state_from_disk(config)
+    image_map = {item["relative_path"]: item for item in images}
+    filtered_relative_paths = [item for item in selected_relative_paths if item in image_map]
+
+    if not filtered_relative_paths:
+        return jsonify({
+            "success": False,
+            "message": "选中的图片均不存在"
         }), 400
 
     with AUTO_BATCH_LOCK:
@@ -484,15 +669,15 @@ def auto_annotate_batch_start():
                 "batch_state": snapshot_batch_state()
             }), 400
 
-    reset_batch_state(len(images))
-    append_batch_log(f"批量自动标注已启动，共 {len(images)} 张图片")
+    reset_batch_state(len(filtered_relative_paths), filtered_relative_paths)
+    append_batch_log(f"批量自动标注已启动，共 {len(filtered_relative_paths)} 张图片")
 
-    worker = Thread(target=batch_auto_annotate_worker, daemon=True)
+    worker = Thread(target=batch_auto_annotate_worker, args=(filtered_relative_paths,), daemon=True)
     worker.start()
 
     return jsonify({
         "success": True,
-        "message": f"批量自动标注已启动，共 {len(images)} 张图片",
+        "message": f"批量自动标注已启动，共 {len(filtered_relative_paths)} 张图片",
         "batch_state": snapshot_batch_state()
     })
 
@@ -550,7 +735,12 @@ def temporary_annotations_action():
             "logs": [f"临时框操作失败：未找到图像状态 {relative_path}"]
         }), 404
 
-    image_state = image_states[relative_path]
+    image_state = deepcopy(image_states[relative_path])
+    pending_image_state = get_pending_batch_result(relative_path)
+    if isinstance(pending_image_state, dict):
+        image_state["temporary_annotations"] = pending_image_state.get("temporary_annotations", [])
+
+    image_state = normalize_single_image_state(image_state)
     temporary_annotations = image_state.get("temporary_annotations", [])
     annotations = image_state.get("annotations", [])
     logs = []
@@ -612,12 +802,16 @@ def temporary_annotations_action():
     image_states[relative_path] = normalize_single_image_state(image_state)
     project_state["images"] = image_states
     save_project_state(config.get("output_dir", ""), project_state)
+    clear_pending_batch_result(relative_path)
 
     next_anno_id = compute_next_anno_id(
         image_states=image_states,
         annotation_id_start=config.get("annotation_id_start", 1)
     )
-
+    logs.append(
+        f"写盘后状态：annotations={len(image_states[relative_path].get('annotations', []))}, "
+        f"temporary={len(image_states[relative_path].get('temporary_annotations', []))}"
+    )
     return jsonify({
         "success": True,
         "message": "临时框操作完成",
